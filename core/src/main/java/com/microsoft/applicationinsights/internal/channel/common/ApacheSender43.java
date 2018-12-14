@@ -88,9 +88,7 @@ final class ApacheSender43 implements ApacheSender {
                     builder.useSystemProperties();
                 }
 
-                httpClient = builder.build();
-
-                httpClientRef.compareAndSet(null,httpClient);
+                httpClientRef.compareAndSet(null, builder.build());
             }
         });
         SDKShutdownActivity.INSTANCE.register(initializer);
