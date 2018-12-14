@@ -48,9 +48,14 @@ import org.apache.http.impl.conn.PoolingHttpClientConnectionManager;
 final class ApacheSender43 implements ApacheSender {
 
     private final AtomicReference<CloseableHttpClient> httpClientRef = new AtomicReference<>();
+
+    private final static String APPINSIGHTS_HTTP_PROXY_HOST_PROPERTY_NAME = "appInsightshttp.proxyHost";
+    private final static String APPINSIGHTS_HTTP_PROXY_PORT_PROPERTY_NAME = "appInsightshttp.proxyPort";
+
     private volatile boolean isClientInitialized = false;
-    private final ExecutorService initializer = new ThreadPoolExecutor(0, 1, 2, TimeUnit.SECONDS, new LinkedBlockingDeque<Runnable>(),
-            ThreadPoolUtils.createNamedDaemonThreadFactory(ApacheSender43.class.getSimpleName()+"_initializer"));
+    private final ExecutorService initializer = new ThreadPoolExecutor(0, 1, 2, TimeUnit.SECONDS,
+            new LinkedBlockingDeque<Runnable>(),
+            ThreadPoolUtils.createNamedDaemonThreadFactory(ApacheSender43.class.getSimpleName() + "_initializer"));
 
     public ApacheSender43() {
         initializer.execute(new Runnable() {
@@ -61,14 +66,31 @@ final class ApacheSender43 implements ApacheSender {
                 cm.setMaxTotal(DEFAULT_MAX_TOTAL_CONNECTIONS);
                 cm.setDefaultMaxPerRoute(DEFAULT_MAX_CONNECTIONS_PER_ROUTE);
 
-                httpClientRef.compareAndSet(null, HttpClients.custom()
-                        .setConnectionManager(cm)
-                        .useSystemProperties()
-                        .build());
+                HttpClientBuilder builder = HttpClients.custom().setConnectionManager(cm);
+                // If proxy host and (optionally) port were set, create and set a default route
+                // planner to use it
+                String proxyHost = System.getProperty(APPINSIGHTS_HTTP_PROXY_HOST_PROPERTY_NAME);
+                if (!Strings.isNullOrEmpty(proxyHost)) {
+                    HttpHost proxy;
+                    String portString = System.getProperty(APPINSIGHTS_HTTP_PROXY_PORT_PROPERTY_NAME);
+                    if (!Strings.isNullOrEmpty(portString)) {
+                        int portNum = Integer.parseInt(portString);
+                        proxy = new HttpHost(proxyHost, portNum);
+                    } else {
+                        proxy = new HttpHost(proxyHost);
+                    }
+                    builder = builder.setRoutePlanner(new DefaultProxyRoutePlanner(proxy));
+                } else {
+                    builder.useSystemProperties();
+                }
+
+                httpClient = builder.build();
+
+                httpClientRef.compareAndSet(null,httpClient);
             }
         });
         SDKShutdownActivity.INSTANCE.register(initializer);
-     }
+    }
 
     @Override
     public HttpResponse sendPostRequest(HttpPost post) throws IOException {
@@ -79,7 +101,7 @@ final class ApacheSender43 implements ApacheSender {
     public void dispose(HttpResponse response) {
         try {
             if (response != null) {
-                ((CloseableHttpResponse)response).close();
+                ((CloseableHttpResponse) response).close();
             }
         } catch (IOException e) {
             InternalLogger.INSTANCE.error("Failed to send or failed to close response, exception: %s", e.toString());
@@ -89,7 +111,7 @@ final class ApacheSender43 implements ApacheSender {
     @Override
     public void close() {
         try {
-            ((CloseableHttpClient)getHttpClient()).close();
+            ((CloseableHttpClient) getHttpClient()).close();
         } catch (IOException e) {
             InternalLogger.INSTANCE.error("Failed to close http client, exception: %s", e.toString());
         }
@@ -103,7 +125,7 @@ final class ApacheSender43 implements ApacheSender {
                     while (httpClientRef.get() == null) {
                         try {
                             TimeUnit.MILLISECONDS.sleep(3);
-                        } catch (InterruptedException e){
+                        } catch (InterruptedException e) {
                         }
                     }
                     isClientInitialized = true;
@@ -116,10 +138,8 @@ final class ApacheSender43 implements ApacheSender {
 
     @Override
     public void enhanceRequest(HttpPost request) {
-        RequestConfig requestConfig = RequestConfig.custom()
-                .setConnectionRequestTimeout(REQUEST_TIMEOUT_IN_MILLIS)
-                .setSocketTimeout(REQUEST_TIMEOUT_IN_MILLIS)
-                .setConnectTimeout(REQUEST_TIMEOUT_IN_MILLIS)
+        RequestConfig requestConfig = RequestConfig.custom().setConnectionRequestTimeout(REQUEST_TIMEOUT_IN_MILLIS)
+                .setSocketTimeout(REQUEST_TIMEOUT_IN_MILLIS).setConnectTimeout(REQUEST_TIMEOUT_IN_MILLIS)
                 .setSocketTimeout(REQUEST_TIMEOUT_IN_MILLIS).build();
 
         request.setConfig(requestConfig);
