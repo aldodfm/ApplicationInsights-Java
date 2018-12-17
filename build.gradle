@@ -61,11 +61,4 @@ allprojects {
 
 // endregion Root project script
 
-maven {
-    url 'https://pkgs.dev.azure.com/AASolutions/_packaging/AXA-ApplicationInsights/maven/v1'
-    credentials {
-        username "AZURE_ARTIFACTS"
-        password System.getenv("AZURE_ARTIFACTS_ENV_ACCESS_TOKEN") ?: "${azureArtifactsGradleAccessToken}"
-    }
-}
 

@@ -60,22 +60,15 @@ dependencies {
 
 // not used at Microsoft, could be used for publishing a fork
 uploadArchives { task ->
-    gradle.taskGraph.whenReady { graph ->
-        if (graph.hasTask(task)) {
-            // check properties defined and fail early
-            mavenRepositoryUrl
-            mavenUsername
-            mavenUserPassword
-        }
-    }
-
     doFirst {
         repositories {
             mavenDeployer {
                 configuration = configurations.mavenDeployer
 
-                repository(url: mavenRepositoryUrl) {
-                    authentication(userName: mavenUsername, password: mavenUserPassword)
+                url 'https://pkgs.dev.azure.com/AASolutions/_packaging/AXA-ApplicationInsights/maven/v1'
+                credentials {
+                    username "AZURE_ARTIFACTS"
+                    password System.getenv("AZURE_ARTIFACTS_ENV_ACCESS_TOKEN") ?: "${azureArtifactsGradleAccessToken}"
                 }
 
                 updatePomWithGeneralProjectInformation(pom)
